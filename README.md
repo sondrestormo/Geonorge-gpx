@@ -1,9 +1,9 @@
 # Geonorge Eiendomsteig → GPX/KML (One‑click Render)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/sondrestormo/Geonorge-gpx)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=<REPLACE_WITH_YOUR_GITHUB_REPO_URL>)
 
-> Viktig: Denne versjonen tvinger `api-version: 2.0` i header for Geonorge Nedlasting API,
-> slik at du unngår feilen `UnsupportedApiVersion '3.0'` på `/api/v2/order`.
+> Viktig: Denne versjonen bruker `https://nedlasting.geonorge.no/api/order?api-version=2.0`
+> (altså API‑versjon i query, ikke i header) for å unngå UnsupportedApiVersion‑feilen.
 
 ## Lokal kjøring
 ```

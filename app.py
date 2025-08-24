@@ -11,11 +11,8 @@ app = Flask(__name__)
 # Geonorge Nedlasting API (Matrikkelen – Eiendomskart Teig)
 DATASET_UUID = "74340c24-1c8a-4454-b813-bfe498e80f16"
 BASE = "https://nedlasting.geonorge.no"
-ORDER_V2 = f"{BASE}/api/v2/order"
-ORDER_STATUS_V2 = f"{BASE}/api/v2/order"
-
-# Tving API‑versjon 2.0 i header for å unngå "UnsupportedApiVersion 3.0"
-API_HEADERS = {"api-version": "2.0"}
+ORDER_URL = f"{BASE}/api/order?api-version=2.0"
+STATUS_URL = f"{BASE}/api/order/{{ref}}?api-version=2.0"
 
 # Geonorge Adresse-API
 ADRESSE_API = "https://ws.geonorge.no/adresser/v1/sok"
@@ -75,16 +72,15 @@ def order_polygon(coords_str, coord_sys, email, format_name="GeoJSON", projectio
             "coordinateSystem": coord_sys
         }]
     }
-    # Eksplicit versjonshode og HTTPS‑URL
-    r = requests.post(ORDER_V2, json=payload, headers=API_HEADERS, timeout=60)
+    r = requests.post(ORDER_URL, json=payload, timeout=60)
     if r.status_code != 200:
-        raise Exception(f"Bestilling feilet: {r.status_code} {r.text[:200]}")
+        raise Exception(f"Bestilling feilet: {r.status_code} {r.text[:300]}")
     return r.json().get("referenceNumber")
 
 def poll_until_ready(ref, timeout_s=300, interval=6):
     end = time.time() + timeout_s
     while time.time() < end:
-        r = requests.get(f"{ORDER_STATUS_V2}/{ref}", headers=API_HEADERS, timeout=30)
+        r = requests.get(STATUS_URL.format(ref=ref), timeout=30)
         if r.status_code != 200:
             time.sleep(interval); continue
         info = r.json()
@@ -155,7 +151,6 @@ def index():
             to_utm = Transformer.from_crs(4326, 25833, always_xy=True)
             x, y = to_utm.transform(lon, lat)
             poly = Polygon([(x-radius_m, y-radius_m), (x+radius_m, y-radius_m), (x+radius_m, y+radius_m), (x-radius_m, y+radius_m), (x-radius_m, y-radius_m)])
-            # flislegging
             tiles = []
             minx, miny, maxx, maxy = poly.bounds
             xx = minx
