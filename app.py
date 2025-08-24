@@ -8,17 +8,24 @@ from pyproj import Transformer
 
 app = Flask(__name__)
 
+# Geonorge Nedlasting API (Matrikkelen – Eiendomskart Teig)
 DATASET_UUID = "74340c24-1c8a-4454-b813-bfe498e80f16"
 BASE = "https://nedlasting.geonorge.no"
 ORDER_V2 = f"{BASE}/api/v2/order"
 ORDER_STATUS_V2 = f"{BASE}/api/v2/order"
+
+# Tving API‑versjon 2.0 i header for å unngå "UnsupportedApiVersion 3.0"
+API_HEADERS = {"api-version": "2.0"}
+
+# Geonorge Adresse-API
 ADRESSE_API = "https://ws.geonorge.no/adresser/v1/sok"
 
 def geocode_adresse(adresse: str):
     r = requests.get(ADRESSE_API, params={"sok": adresse, "treffPerSide": 1}, timeout=30)
     r.raise_for_status()
     data = r.json()
-    if not data.get("adresser"): return None
+    if not data.get("adresser"):
+        return None
     a = data["adresser"][0]
     if "representasjonspunkt" in a and a["representasjonspunkt"]:
         return float(a["representasjonspunkt"]["lon"]), float(a["representasjonspunkt"]["lat"])
@@ -47,7 +54,8 @@ def tile_polygon(poly_utm: Polygon, tile_m: int):
             if not inter.is_empty:
                 geoms = [inter] if isinstance(inter, Polygon) else list(getattr(inter, "geoms", []))
                 for g in geoms:
-                    if isinstance(g, Polygon) and g.area > 1.0: tiles.append(g)
+                    if isinstance(g, Polygon) and g.area > 1.0:
+                        tiles.append(g)
             y = ny
         x = nx
     return tiles
@@ -67,18 +75,23 @@ def order_polygon(coords_str, coord_sys, email, format_name="GeoJSON", projectio
             "coordinateSystem": coord_sys
         }]
     }
-    r = requests.post(ORDER_V2, json=payload, timeout=60)
-    if r.status_code != 200: raise Exception(f"Bestilling feilet: {r.status_code} {r.text[:200]}")
+    # Eksplicit versjonshode og HTTPS‑URL
+    r = requests.post(ORDER_V2, json=payload, headers=API_HEADERS, timeout=60)
+    if r.status_code != 200:
+        raise Exception(f"Bestilling feilet: {r.status_code} {r.text[:200]}")
     return r.json().get("referenceNumber")
 
 def poll_until_ready(ref, timeout_s=300, interval=6):
     end = time.time() + timeout_s
     while time.time() < end:
-        r = requests.get(f"{ORDER_STATUS_V2}/{ref}", timeout=30)
-        if r.status_code != 200: time.sleep(interval); continue
-        info = r.json(); files = info.get("files", [])
+        r = requests.get(f"{ORDER_STATUS_V2}/{ref}", headers=API_HEADERS, timeout=30)
+        if r.status_code != 200:
+            time.sleep(interval); continue
+        info = r.json()
+        files = info.get("files", [])
         ready = [f for f in files if f.get("status")=="ReadyForDownload" and f.get("downloadUrl")]
-        if ready: return ready[0]["downloadUrl"]
+        if ready:
+            return ready[0]["downloadUrl"]
         time.sleep(interval)
     raise Exception("Tidsavbrudd: nedlastingsfil ikke klar i tide.")
 
@@ -115,24 +128,34 @@ def render_map(geojson):
 def index():
     message = None; map_html = None; downloads = {}
     if request.method == "POST":
-        email = request.form.get("email","" ).strip()
-        adresse = request.form.get("adresse","" ).strip()
-        kommunenr = request.form.get("kommunenr","" ).strip()
-        gnr = request.form.get("gnr","" ).strip()
-        bnr = request.form.get("bnr","" ).strip()
-        fnr = request.form.get("fnr","" ).strip()
-        snr = request.form.get("snr","" ).strip()
+        email = request.form.get("email","").strip()
+        adresse = request.form.get("adresse","").strip()
+        kommunenr = request.form.get("kommunenr","").strip()
+        gnr = request.form.get("gnr","").strip()
+        bnr = request.form.get("bnr","").strip()
+        fnr = request.form.get("fnr","").strip()
+        snr = request.form.get("snr","").strip()
         radius_m = int(request.form.get("radius_m","5000"))
         tile_m = int(request.form.get("tile_m","2000"))
         try:
             if not email: return "E-post kreves for bestilling hos Geonorge."
             if not adresse: return "Oppgi en adresse nær midten av eiendommen."
-            center = geocode_adresse(adresse)
-            if not center: return "Fant ikke adressen i Geonorge."
+            # Geokoding
+            r = requests.get(ADRESSE_API, params={"sok": adresse, "treffPerSide": 1}, timeout=30)
+            r.raise_for_status()
+            data = r.json()
+            if not data.get("adresser"): return "Fant ikke adressen i Geonorge."
+            a = data["adresser"][0]
+            if "representasjonspunkt" in a and a["representasjonspunkt"]:
+                lon, lat = float(a["representasjonspunkt"]["lon"]), float(a["representasjonspunkt"]["lat"])
+            else:
+                epsg = int(a["punkt"]["epsg"]); E, N = [float(x) for x in a["punkt"]["koordinater"].split(",")]
+                trans = Transformer.from_crs(epsg, 4326, always_xy=True); lon, lat = trans.transform(E, N)
+            # Bygg rute og tiles
             to_utm = Transformer.from_crs(4326, 25833, always_xy=True)
-            x, y = to_utm.transform(center[0], center[1])
+            x, y = to_utm.transform(lon, lat)
             poly = Polygon([(x-radius_m, y-radius_m), (x+radius_m, y-radius_m), (x+radius_m, y+radius_m), (x-radius_m, y+radius_m), (x-radius_m, y-radius_m)])
-            # tiles
+            # flislegging
             tiles = []
             minx, miny, maxx, maxy = poly.bounds
             xx = minx
@@ -149,7 +172,7 @@ def index():
                                 if isinstance(g, Polygon): tiles.append(g)
                     yy = ny
                 xx = nx
-            # order + download
+            # Bestill og last ned
             collected = []
             for t in tiles:
                 coords = " ".join([f"{round(px,3)} {round(py,3)}" for (px, py) in list(t.exterior.coords)])
@@ -164,9 +187,9 @@ def index():
             merged = {"type":"FeatureCollection","features":[]}
             for b in collected:
                 d = json.loads(b.decode("utf-8")); merged["features"].extend(d.get("features", []))
-            # valgfritt filter
+            # Filter (valgfritt)
             if any([kommunenr, gnr, bnr, fnr, snr]):
-                fe = []
+                feats = []
                 for f in merged.get("features", []):
                     p = f.get("properties", {}) or {}
                     ok = True
@@ -175,23 +198,20 @@ def index():
                     if ok and bnr and str(p.get("bruksnr")) != str(bnr): ok=False
                     if ok and fnr and str(p.get("festenr")) != str(fnr): ok=False
                     if ok and snr and str(p.get("seksjonsnr")) != str(snr): ok=False
-                    if ok: fe.append(f)
-                merged = {"type":"FeatureCollection","features":fe}
-                if not fe: return "Ingen teiger matchet filteret. Fjern filter og prøv igjen."
-            # exports
-            gpx_xml = (lambda gj: (lambda g: g.to_xml())(__import__("gpxpy").gpx.GPX()))(merged)  # placeholder; vi bruker funksjonen under
-            def geojson_to_gpx_local(geojson):
-                gpx_local = gpxpy.gpx.GPX()
-                for feat in geojson.get("features", []):
-                    geom = shape(feat["geometry"])
-                    polys = [geom] if isinstance(geom, Polygon) else list(geom.geoms) if isinstance(geom, MultiPolygon) else []
-                    for poly in polys:
-                        seg = gpxpy.gpx.GPXTrackSegment()
-                        for x, y in poly.exterior.coords:
-                            seg.points.append(gpxpy.gpx.GPXTrackPoint(y, x))
-                        gpx_local.tracks.append(gpxpy.gpx.GPXTrack(segments=[seg]))
-                return gpx_local.to_xml()
-            gpx_xml = geojson_to_gpx_local(merged)
+                    if ok: feats.append(f)
+                if not feats: return "Ingen teiger matchet filteret. Fjern filter og prøv igjen."
+                merged = {"type":"FeatureCollection","features":feats}
+            # Eksporter
+            gpx = gpxpy.gpx.GPX()
+            for feat in merged.get("features", []):
+                geom = shape(feat["geometry"])
+                polys = [geom] if isinstance(geom, Polygon) else list(geom.geoms) if isinstance(geom, MultiPolygon) else []
+                for poly in polys:
+                    seg = gpxpy.gpx.GPXTrackSegment()
+                    for x0, y0 in poly.exterior.coords:
+                        seg.points.append(gpxpy.gpx.GPXTrackPoint(y0, x0))
+                    gpx.tracks.append(gpxpy.gpx.GPXTrack(segments=[seg]))
+            gpx_xml = gpx.to_xml()
             kml_doc = kml.KML(); ns = "{http://www.opengis.net/kml/2.2}"
             doc = kml.Document(ns, "1", "Eiendomsteig", "Fra Geonorge (flislagt)"); kml_doc.append(doc)
             for feat in merged.get("features", []):

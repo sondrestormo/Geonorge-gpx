@@ -1,6 +1,9 @@
 # Geonorge Eiendomsteig → GPX/KML (One‑click Render)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/sondrestormo/Geonorge-gpx/tree/main)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=<REPLACE_WITH_YOUR_GITHUB_REPO_URL>)
+
+> Viktig: Denne versjonen tvinger `api-version: 2.0` i header for Geonorge Nedlasting API,
+> slik at du unngår feilen `UnsupportedApiVersion '3.0'` på `/api/v2/order`.
 
 ## Lokal kjøring
 ```
@@ -12,4 +15,4 @@ python app.py
 ## One‑click deploy
 1. Lag et offentlig GitHub‑repo og last opp alle filene her.
 2. Bytt ut `<REPLACE_WITH_YOUR_GITHUB_REPO_URL>` i knappen over med din repo‑URL.
-3. Klikk knappen i README på GitHub – Render finner `render.yaml` og setter alt opp automatisk.
+3. Klikk knappen i README – Render finner `render.yaml` og setter alt opp automatisk.
