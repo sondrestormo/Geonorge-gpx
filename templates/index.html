@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset='utf-8'><title>Geonorge Eiendomsteig – Render</title></head>
+<body>
+<h1>Eiendomsteig (Geonorge) – Store eiendommer</h1>
+<form method="POST">
+  <p><b>Adresse</b> (nær midten av eiendommen):<br>
+  <input type="text" name="adresse" size="60" placeholder="Eks: Storgata 1, Åmli"></p>
+  <p>Valgfritt filter: 
+    <input type="text" name="kommunenr" placeholder="Kommunenr">
+    <input type="text" name="gnr" placeholder="GNR">
+    <input type="text" name="bnr" placeholder="BNR">
+    <input type="text" name="fnr" placeholder="FNR">
+    <input type="text" name="snr" placeholder="SNR">
+  </p>
+  <p>Utsnitt og fliser: 
+    Radius (m): <input type="number" name="radius_m" value="5000">
+    Tile (m): <input type="number" name="tile_m" value="2000">
+  </p>
+  <p>E‑post (kreves av Geonorge): <input type="email" name="email" placeholder="din@epost.no" required></p>
+  <p><button type="submit">Hent teiger og lag GPX/KML</button></p>
+</form>
+{% if message %}<p style="color:red">{{ message }}</p>{% endif %}
+{% if map_html %}<h3>Kart</h3><div style="height:600px">{{ map_html|safe }}</div>{% endif %}
+{% if downloads %}<h3>Nedlastinger</h3><ul>
+  <li><a href="{{ downloads['gpx'] }}">Last ned GPX</a></li>
+  <li><a href="{{ downloads['kml'] }}">Last ned KML</a></li>
+</ul>{% endif %}
+</body></html>
